@@ -69,4 +69,16 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 
-client.login(process.env.DISCORD_TOKEN);
+const LOGIN_HELP = {
+  TokenInvalid: 'DISCORD_TOKEN is wrong or was reset. Copy a fresh one from Developer Portal → Bot → Reset Token.',
+  DisallowedIntents:
+    'Turn on "Server Members Intent" in Developer Portal → your app → Bot → Privileged Gateway Intents, then redeploy.',
+};
+
+client.login(process.env.DISCORD_TOKEN).catch((err) => {
+  const key = err.code === 'TokenInvalid' ? 'TokenInvalid' : /disallowed intents/i.test(err.message) ? 'DisallowedIntents' : null;
+  console.error(`❌ Could not log in to Discord: ${err.message}`);
+  if (key) console.error(`   Fix: ${LOGIN_HELP[key]}`);
+  flush();
+  process.exit(1); // let the host mark the deploy as crashed instead of running half-alive
+});

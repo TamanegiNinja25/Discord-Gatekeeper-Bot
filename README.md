@@ -47,7 +47,7 @@ npm install
 cp .env.example .env        # CLIENT_ID + PUBLIC_KEY are pre-filled; add DISCORD_TOKEN (and GUILD_ID while testing)
 npm start                   # also registers the slash commands on startup
 ```
-Needs Node.js 18.17+. To get your server ID: User Settings → Advanced → Developer Mode on, then right-click the server → Copy Server ID.
+Needs Node.js 22. To get your server ID: User Settings → Advanced → Developer Mode on, then right-click the server → Copy Server ID.
 
 **4. Configure in Discord**
 ```

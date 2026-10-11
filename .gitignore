@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Bot data: member records + Linked Roles OAuth tokens. Never commit.
+data/

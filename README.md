@@ -45,8 +45,7 @@ Then in Server Settings → Roles, **drag the bot's role above every role it sho
 ```bash
 npm install
 cp .env.example .env        # CLIENT_ID + PUBLIC_KEY are pre-filled; add DISCORD_TOKEN (and GUILD_ID while testing)
-npm run deploy              # registers the slash commands
-npm start
+npm start                   # also registers the slash commands on startup
 ```
 Needs Node.js 18.17+. To get your server ID: User Settings → Advanced → Developer Mode on, then right-click the server → Copy Server ID.
 
@@ -90,7 +89,7 @@ Lets admins make roles that members unlock by connecting their account, with req
 Setup:
 1. Developer Portal → **OAuth2** → copy the **Client Secret** into `CLIENT_SECRET`, and under **Redirects** add `PUBLIC_URL/discord/oauth-callback` exactly.
 2. Set the Linked Roles Verification URL to `PUBLIC_URL/verify-user`.
-3. Run `npm run deploy` (registers the three requirements along with the commands).
+3. Restart the bot (it registers the three requirements on startup; `npm run deploy` does the same by hand).
 4. In your server: **Server Settings → Roles → (a role) → Links → Add requirement** → pick the bot → choose e.g. *Voice hours ≥ 10*.
 
 Members then see the role's connection option in the server's role menu / Linked Roles list, click it, approve, and get the role automatically when they qualify. Stats update about 30 seconds after each voice session and every 6 hours. The OAuth tokens are stored in `data/guilds.json`, so keep that folder private.
@@ -103,11 +102,46 @@ Set `BOT_NAME`, `OPERATOR_NAME` and `CONTACT_EMAIL` in `.env` — they're filled
 
 Discord can't reach `localhost`, so use a tunnel: `npx cloudflared tunnel --url http://localhost:3000` (or ngrok), and set `PUBLIC_URL` to the `https://…` address it prints. The tunnel URL changes each run, so update the portal fields too.
 
-## Hosting 24/7
+## Deploy on Railway (recommended)
 
-The bot only works while `npm start` is running. Options: a spare PC / Raspberry Pi with `pm2` (`npm i -g pm2 && pm2 start src/index.js --name gatekeeper`), or a host that runs always-on Node processes (Railway, Render background worker, Fly.io, a small VPS). Serverless platforms like Vercel won't work — they can't hold the persistent gateway connection. Pick a host that also exposes an HTTPS URL for the web server (Railway, Render *web service*, and Fly.io all do) — use that URL as `PUBLIC_URL`. `GET /health` returns 200 once the bot is connected, which hosts can use as a health check.
+The bot has to run 24/7 and keep its data on a disk. Railway does both, deploys automatically from this GitHub repo, and gives you the HTTPS address the Developer Portal needs. The Hobby plan is $5/month and includes $5 of usage, which a bot this size normally stays within.
 
-Data lives in `data/guilds.json` (set `DATA_DIR` to move it). On hosts with ephemeral disks, point `DATA_DIR` at a mounted volume or the records reset on redeploy. The store is isolated in `src/store.js`, so swapping it for PostgreSQL/Supabase later only touches that file.
+> **Not Vercel:** Vercel runs code for a few seconds per web request and then shuts it down, and it doesn't keep files. The bot would never stay online, and its records would vanish.
+
+**1. Create the service**
+1. Sign in at [railway.com](https://railway.com) with GitHub → **New Project → Deploy from GitHub repo** → pick **Discord-Gatekeeper-Bot**.
+2. Railway detects Node.js and runs `npm start` by itself. No config file needed.
+
+**2. Add a volume (do this before inviting people — it's where all records live)**
+Right-click the service on the project canvas → **Attach volume** → mount path **`/data`**. The bot finds it automatically. Without a volume, records and settings are wiped on every deploy, and the logs show a ⚠️ warning.
+
+**3. Add variables** (service → **Variables** → *Raw Editor*, paste and fill in):
+```
+DISCORD_TOKEN=
+CLIENT_ID=1558698425762193408
+PUBLIC_KEY=770b2066e4b89df3cdd8c6c378f720088cd10487c3564e4441de64a4391783b7
+CLIENT_SECRET=
+OPERATOR_NAME=
+CONTACT_EMAIL=
+```
+Don't set `PORT`, `PUBLIC_URL` or `DATA_DIR`; Railway provides them. Add `GUILD_ID=your-server-id` if you want new commands to show up instantly in one server.
+
+**4. Get the public address**
+Service → **Settings → Networking → Generate Domain**. You get something like `https://discord-gatekeeper-bot-production.up.railway.app`. That's your `PUBLIC_URL`. Opening it shows the bot's status page.
+
+**5. Optional: health check**
+Settings → **Deploy → Healthcheck Path** = `/health`. Railway then only switches to a new version once it has connected to Discord, so a broken token can't take the bot down.
+
+**6. Finish in the Developer Portal**
+Fill in the four URLs from [Developer Portal URLs](#developer-portal-urls-interactions-linked-roles-terms-privacy), using your Railway domain, and add `https://YOUR-DOMAIN/discord/oauth-callback` under OAuth2 → Redirects. Save the Interactions Endpoint URL **after** the deploy shows *Active*, because Discord tests it immediately.
+
+Slash commands and Linked Roles requirements are registered automatically every time the bot starts, so there's no `npm run deploy` step on Railway. Every push to `main` redeploys automatically.
+
+### Other hosts
+
+Anything that keeps a Node process running with a persistent disk works: Render (paid instance + disk; the free tier sleeps after 15 minutes, which takes the bot offline), Fly.io, a VPS, or a spare PC with `pm2` (`npm i -g pm2 && pm2 start src/index.js --name gatekeeper`). Set `PUBLIC_URL` and `DATA_DIR` yourself there. `GET /health` returns 200 once the bot is connected.
+
+Data lives in `data/guilds.json` (or `DATA_DIR`). The store is isolated in `src/store.js`, so swapping it for PostgreSQL/Supabase later only touches that file.
 
 ## Notes
 
@@ -120,7 +154,9 @@ Data lives in `data/guilds.json` (set `DATA_DIR` to move it). On hosts with ephe
 ```
 src/
   index.js            client, intents, event wiring, graceful shutdown
-  deploy-commands.js  registers slash commands
+  env.js              loads .env + auto-detects Railway/Render settings
+  register.js         registers slash commands + Linked Roles requirements
+  deploy-commands.js  `npm run deploy` (manual registration)
   commands.js         slash command definitions + handlers
   events.js           join/leave, welcome, auto roles, voice tracking, role panel buttons
   interactions.js     routes commands/buttons (same path for gateway and HTTP)
